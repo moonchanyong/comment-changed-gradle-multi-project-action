@@ -1,10 +1,9 @@
 name: 'comment-changed-gradle-multi-project-action'
 description: 'Greet someone'
 inputs:
-  who-to-greet:  # id of input
-    description: 'Who to greet'
+  github-token:
+    description: "github token using comment"
     required: true
-    default: 'World'
 outputs:
   random-number:
     description: "Random number"
@@ -12,7 +11,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         fetch-depth: 2
     - uses: OrangeLabs-moe/gradle-actions@v5.0-openjdk-15
@@ -24,15 +23,17 @@ runs:
     - name: Get changed files
       id: changed-files
       uses: tj-actions/changed-files@v18.4
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v3
     - run: |
         # make output to write comment
-        COMMENT=$(node index.js ${{ steps.changed-files.outputs.all_changed_files }})
+        COMMENT=$(node $GITHUB_ACTION_PATH/index.js ${{ steps.changed-files.outputs.all_changed_files }})
         echo "::set-output name=comment::$(echo $COMMENT)"
       id: make-output
       shell: bash
     - name: comment PR
       uses: okteto/notify-pr@master
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
       with:
         message: "${{ steps.make-output.output.comment }}"

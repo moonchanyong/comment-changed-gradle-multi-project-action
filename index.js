@@ -6,7 +6,8 @@ if (args.length == 0) {
 
 const fs = require('fs')
 const changedFiles = String(args[0]).split('\n')
-const jsonStr = fs.readFileSync('./gradle-structure.json')
+const actionPath =  process.env.GITHUB_ACTION_PATH
+const jsonStr = fs.readFileSync(`gradle-structure.json`)
 const nodes = JSON.parse(jsonStr) || []
 
 const nodeMap = nodes.reduce((map, node) => {
