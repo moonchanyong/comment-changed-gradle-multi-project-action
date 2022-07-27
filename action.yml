@@ -1,39 +1,66 @@
 name: 'comment-changed-gradle-multi-project-action'
-description: 'Greet someone'
+description: 'Comment changed modules include indirect change by dependency.'
 inputs:
-  github-token:
-    description: "github token using comment"
-    required: true
+  header-text:
+    description: "The header message of added comment. used to identify added comment by action."
+    default: Impacted Modules✨
+    required: false
 outputs:
-  random-number:
-    description: "Random number"
-    value: ${{ steps.random-number-generator.outputs.random-id }}
+  internal-modules:
+    description: "internal modules"
+    value: ${{ env.INTERNAL_MODULES }}
+  leaf-modules:
+    description: "leaf modules"
+    value: ${{ env.LEAF_MODULES }}
 runs:
   using: "composite"
   steps:
-    - uses: actions/checkout@v3
-      with:
-        fetch-depth: 2
-    - uses: OrangeLabs-moe/gradle-actions@v5.0-openjdk-15
-      with:
-        args: extractProjectStructure
     - uses: actions/setup-node@v2
       with:
         node-version: 16
     - name: Get changed files
       id: changed-files
       uses: tj-actions/changed-files@v18.4
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
     - run: |
         # make output to write comment
-        COMMENT=$(node $GITHUB_ACTION_PATH/index.js ${{ steps.changed-files.outputs.all_changed_files }})
-        echo "::set-output name=comment::$(echo $COMMENT)"
+        export OUTPUT_FILE_PATH=$GITHUB_ACTION_PATH
+        echo $OUTPUT_FILE_PATH 
+        ./gradlew extractProjectStructure
+        echo "$(node $GITHUB_ACTION_PATH/index.js ${{ steps.changed-files.outputs.all_changed_files }})" >> $GITHUB_ENV
       id: make-output
       shell: bash
-    - name: comment PR
-      uses: okteto/notify-pr@master
-      env:
-        GITHUB_TOKEN: ${{ inputs.github-token }}
+
+    - name: Find Comment
+      uses: peter-evans/find-comment@v2
+      id: fc
       with:
-        message: "${{ steps.make-output.output.comment }}"
+        issue-number: ${{ github.event.pull_request.number }}
+        comment-author: 'github-actions[bot]'
+        body-includes: ${{ inputs.header-text }}
+
+    - name: Create comment
+      if: steps.fc.outputs.comment-id == ''
+      uses: peter-evans/create-or-update-comment@v2
+      with:
+        issue-number: ${{ github.event.pull_request.number }}
+        body: |
+          ## ${{ inputs.header-text }}
+          ### Internal Modules
+          ${{ env.INTERNAL_MODULES }}
+          ### Leaf Modules 
+          ${{ env.LEAF_MODULES }}
+        reactions: eyes
+
+    - name: Update comment
+      if: steps.fc.outputs.comment-id != ''
+      uses: peter-evans/create-or-update-comment@v2
+      with:
+        comment-id: ${{ steps.fc.outputs.comment-id }}
+        body: |
+          ## ${{ inputs.header-text }}
+          ### Internal Modules
+          ${{ env.INTERNAL_MODULES }}
+          ### Leaf Modules 
+          ${{ env.LEAF_MODULES }}
+        reactions: eyes
+        edit-mode: replace

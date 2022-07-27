@@ -1,13 +1,13 @@
 // read input json file
-const args = process.argv.slice(2);
-if (args.length == 0) {
-    throw new Error('Gradle structure is not passed.')
+const changedFiles = process.argv.slice(2);
+
+if (changedFiles.length == 0) {
+    throw new Error('There is no change.')
 }
 
 const fs = require('fs')
-const changedFiles = String(args[0]).split('\n')
-const actionPath =  process.env.GITHUB_ACTION_PATH
-const jsonStr = fs.readFileSync(`gradle-structure.json`)
+const path = process.env.GITHUB_ACTION_PATH || '.'
+const jsonStr = fs.readFileSync(`${path}/gradle-structure.json`)
 const nodes = JSON.parse(jsonStr) || []
 
 const nodeMap = nodes.reduce((map, node) => {
@@ -41,10 +41,11 @@ const checkTree = nodes.reduce((root, node) => {
     module: ''
 })
 
-const retSet = new Set()
+const internalModuleSet = new Set()
+const leafModuleSet = new Set()
 changedFiles.forEach(file => {
     var cursor = checkTree
-    var lastModule = ''
+    var module = ''
 
     file.split('/').every(path => {
         if (!path) return true
@@ -53,20 +54,31 @@ changedFiles.forEach(file => {
             cursor = cursor[path]
         }
 
-        if (!!cursor.module) lastModule = cursor.module
+        if (!!cursor.module) module = cursor.module
 
         return exist
     })
 
-    if (!!lastModule) appendNodes(nodeMap[lastModule], retSet)
+    if (!!module) appendNodes(nodeMap[module])
 })
 
-function appendNodes(node, retSet) {
-    retSet.add(`:${node.id.group}:${node.id.name}:${node.id.version}`)
-    node.dependentOn.forEach(child => appendNodes(child, retSet))
+function appendNodes(node) {
+    const key = `${node.id.group}:${node.id.name}:${node.id.version}`
+    if (node.dependentOn.length == 0) leafModuleSet.add(key)
+    else internalModuleSet.add(`${node.id.group}:${node.id.name}:${node.id.version}`)
+
+    node.dependentOn.forEach(child => appendNodes(child, internalModuleSet))
 }
 
 // write output file
-const out = [...retSet].join('\n')
+const internal = [...internalModuleSet].join('\n')
+const leaf = [...leafModuleSet].join('\n')
 
-console.log(out)
+console.log(`${setEnvValue('LEAF_MODULES', leaf)}\n${setEnvValue('INTERNAL_MODULES', internal)}`)
+
+// https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#multiline-strings
+function setEnvValue(key, val) {
+    return `${key}<<EOF
+${val}
+EOF`
+}
